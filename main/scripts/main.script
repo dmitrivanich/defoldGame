@@ -1,0 +1,98 @@
+local function generateUniqueValue()
+	local timestamp = os.time() -- Текущее время в секундах с начала эпохи Unix
+	return tostring(timestamp)
+end
+
+-- Функция для проверки значения в localStorage
+local function checkLocalStorage()
+	-- Используем JavaScript для чтения значения из localStorage
+	local js_code = [[
+	(function() {
+		var value = localStorage.getItem('sessionId');
+		
+		if (value !== null) {
+			console.log('Текущее значение: ' + value);
+		} else {
+			console.log('Ключ не найден в localStorage.');
+		}
+		
+		return value;
+	})();
+	]]
+
+	local result = html5.run(js_code)
+	-- Выводим значение в лог Defold (по желанию)
+	print("LocalStorage value:", result)
+
+	return result
+end
+
+local function pages_checking(self) 
+	local previousId = checkLocalStorage()
+	print(previousId, self.sessionId)
+	if (previousId == "null") then
+		local js_code = string.format("localStorage.setItem('sessionId', '%s');", self.sessionId)
+		html5.run(js_code)
+	elseif not (self.sessionId == previousId) then 
+		block_game(self)
+
+		if self.timer then
+			timer.cancel(self.timer)
+		end
+	end
+end
+
+function prepare_local_storage()
+	local js_code = [[
+		window.addEventListener('beforeunload', function() {
+			localStorage.removeItem('sessionId');
+		});
+	]]
+	
+	html5.run(js_code)
+end
+
+function init(self)
+	-- Эта функция вызывается при запуске скрипта
+	print("Игра запущена")
+
+	prepare_local_storage()
+	
+	-- Генерируем уникальное начальное значение
+	self.sessionId = generateUniqueValue()
+	-- Устанавливаем таймер для постоянной проверки каждые 1000 миллисекунд
+	self.timer = timer.delay(1, true, pages_checking)
+end
+
+function block_game(self)
+	print("Блокировка игры, так как она открыта в другой вкладке")
+	
+	msg.post("gui", "show_popup")
+end
+
+local function unlock_game(self)
+	print("Разблокировка игры")
+
+	local js_code = string.format("localStorage.setItem('sessionId', '%s');", self.sessionId)
+	html5.run(js_code)
+	
+	-- Устанавливаем таймер для постоянной проверки каждые 1000 миллисекунд
+	self.timer = timer.delay(1, true, pages_checking)
+end
+
+
+function on_message(self, message_id, message, sender)
+	if message_id == hash("unlock_game") then 
+		unlock_game(self)
+	end
+end
+
+function final(self)
+	-- Отменяем таймер при завершении
+	if self.timer then
+		timer.cancel(self.timer)
+	end
+
+	local js_code = string.format("localStorage.removeItem	('sessionId');")
+	html5.run(js_code)
+end

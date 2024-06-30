@@ -1,0 +1,77 @@
+
+local button_clicked = false
+local pupup_is_showed = false
+
+local popup
+local background
+
+local function show()
+	
+	gui.animate(popup, "position.y", 360, gui.EASING_OUTBACK, 0.4, 0)
+	gui.animate(popup, "color.w", 1, gui.EASING_LINEAR, 0.3, 0.1)
+	
+	gui.animate(background, "color.w", 0.5, gui.EASING_LINEAR, 0.3, 0.3, function() 
+		pupup_is_showed = true
+	end)
+end
+
+local function hide() 
+	gui.animate(popup, "position.y", 500, gui.EASING_INBACK, 0.4, 0)
+	gui.animate(popup, "color.w", 0, gui.EASING_LINEAR, 0.3, 0.1)
+
+	gui.animate(background, "color.w", 0, gui.EASING_LINEAR, 0.3, 0.2,  function() 
+		pupup_is_showed = false
+		button_clicked = false
+	end)
+end
+
+local function button_to_hint(button)
+	-- Анимация перемещения вправо на 50
+	gui.animate(button, "position.x", 20, gui.EASING_INBACK, 0.1, 0, function()
+		-- Анимация перемещения влево на 50 после завершения первой анимации
+		gui.animate(button, "position.x", -20, gui.EASING_INOUTBACK, 0.1, 0, function()
+			-- Анимация возврата в начальное положение после завершения второй анимации
+			gui.animate(button, "position.x", 0, gui.EASING_OUTBACK, 0.1, 0)
+		end)
+	end)
+end
+
+local function button_click(button)
+	button_clicked = true;
+	
+	local function back(self, node) 
+		gui.animate(node, "scale", 1, gui.EASING_INSINE, 0.2, 0, hide)
+	end
+
+	gui.animate(button, "scale", 0.9, gui.EASING_OUTEXPO, 0.1, 0, back)
+	sound.play("sounds#tap")
+	msg.post("main", "unlock_game")
+end	
+
+
+function on_message(self, message_id, message, sender)
+	if message_id == hash("show_popup") then
+		show()
+	end
+end
+
+
+function init(self)
+	popup = gui.get_node("popup")
+	background = gui.get_node("popup_background")
+	
+	msg.post(".", "acquire_input_focus")
+end
+
+
+function on_input(self, action_id, action)
+	if pupup_is_showed and action_id == hash("touch") and action.pressed then
+		local button = gui.get_node("update_button")
+		
+		if gui.pick_node(button, action.x, action.y) then
+			if not button_clicked then button_click(button) end
+		else
+			button_to_hint(button)
+		end
+	end
+end
