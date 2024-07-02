@@ -1,5 +1,5 @@
 local function generateUniqueValue()
-	local timestamp = os.time() -- Текущее время в секундах с начала эпохи Unix
+	local timestamp = os.time()
 	return tostring(timestamp)
 end
 
@@ -27,6 +27,12 @@ local function checkLocalStorage()
 	return result
 end
 
+local function block_game(self)
+	print("Блокировка игры, так как она открыта в другой вкладке")
+
+	msg.post("popup", "show_popup")
+end
+
 local function pages_checking(self) 
 	local previousId = checkLocalStorage()
 	print(previousId, self.sessionId)
@@ -42,7 +48,7 @@ local function pages_checking(self)
 	end
 end
 
-function prepare_local_storage()
+local function prepare_local_storage(self)
 	local js_code = [[
 		window.addEventListener('beforeunload', function() {
 			localStorage.removeItem('sessionId');
@@ -50,25 +56,23 @@ function prepare_local_storage()
 	]]
 	
 	html5.run(js_code)
-end
 
-function init(self)
-	-- Эта функция вызывается при запуске скрипта
-	print("Игра запущена")
-
-	prepare_local_storage()
-	
 	-- Генерируем уникальное начальное значение
 	self.sessionId = generateUniqueValue()
 	-- Устанавливаем таймер для постоянной проверки каждые 1000 миллисекунд
 	self.timer = timer.delay(1, true, pages_checking)
 end
 
-function block_game(self)
-	print("Блокировка игры, так как она открыта в другой вкладке")
-	
-	msg.post("gui", "show_popup")
+function init(self)
+	-- Эта функция вызывается при запуске скрипта
+	print("Игра запущена")
+
+	if not (html5 == nil) then 
+
+		prepare_local_storage(self)
+	end
 end
+
 
 local function unlock_game(self)
 	print("Разблокировка игры")
@@ -92,7 +96,4 @@ function final(self)
 	if self.timer then
 		timer.cancel(self.timer)
 	end
-
-	local js_code = string.format("localStorage.removeItem	('sessionId');")
-	html5.run(js_code)
 end
