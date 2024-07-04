@@ -1,13 +1,6 @@
-# Welcome to Defold
+# Test game on Defold
 
-This project was created from the "empty" project template.
-
-The settings in ["game.project"](defold://open?path=/game.project) are all the default. A bootstrap empty ["main.collection"](defold://open?path=/main/main.collection) is included.
-
-Check out [the documentation pages](https://defold.com/learn) for examples, tutorials, manuals and API docs.
-
-If you run into trouble, help is available in [our forum](https://forum.defold.com).
-
-Happy Defolding!
+Test doc [link](https://docs.google.com/document/d/1N4H6Tc2M5-z7uWA-tKvT3WVWO2vf5CGSmY4W9TWaVV4/edit)
+Play now on free host [link](http://f1003366.xsph.ru/)
 
 ---
