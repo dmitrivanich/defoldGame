@@ -6,4 +6,11 @@ function M.getPointOnCircle(radius, angleRad)
 	return x, y
 end
 
+function M.calculate_size(size, number)
+	local newSize = (size * 5) / number
+
+	if newSize > size then return size
+	else return newSize end
+end
+
 return M

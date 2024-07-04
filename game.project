@@ -28,3 +28,4 @@ show_fullscreen_button = 0
 scale_mode = stretch
 cssfile = /main/web/styles.css
 splash_image = /main/images/logo.png
+

@@ -1,46 +1,47 @@
+local localstorage = require("main.modules.localstorage")
+
 local function generateUniqueValue()
 	local timestamp = os.time()
 	return tostring(timestamp)
 end
 
--- Функция для проверки значения в localStorage
-local function checkLocalStorage()
-	-- Используем JavaScript для чтения значения из localStorage
-	local js_code = [[
-	(function() {
-		var value = localStorage.getItem('sessionId');
-		
-		if (value !== null) {
-			console.log('Текущее значение: ' + value);
-		} else {
-			console.log('Ключ не найден в localStorage.');
-		}
-		
-		return value;
-	})();
-	]]
-
-	local result = html5.run(js_code)
-	-- Выводим значение в лог Defold (по желанию)
-	print("LocalStorage value:", result)
-
-	return result
-end
-
-local function block_game(self)
+local function popup_lock_game(self)
 	print("Блокировка игры, так как она открыта в другой вкладке")
-
-	msg.post("popup", "show_popup")
+	
+	self.game_is_locked_by_popup = true
+	
+	msg.post("/popup", "show_popup")
+	
+	if self.proxy_loaded then
+		msg.post("#game_proxy", "disable")
+		msg.post("#game_proxy", "unload")
+	end
 end
 
-local function pages_checking(self) 
-	local previousId = checkLocalStorage()
-	print(previousId, self.sessionId)
+local function next_level_lock_game(self)
+	print("Блокировка игры, так как открыта смена уровня")
+
+	self.game_is_locked_by_level = true
+	
+	if self.proxy_loaded then
+		msg.post("#game_proxy", "disable")
+		msg.post("#game_proxy", "unload")
+	end
+
+	msg.post("/win", "show_win", {current_level = self.params.level})
+end
+
+local function localstorage_checking(self) 
+	if self.game_is_locked_by_popup then return end
+	
+	local previousId = localstorage.check_session_id()
+	
 	if (previousId == "null") then
 		local js_code = string.format("localStorage.setItem('sessionId', '%s');", self.sessionId)
 		html5.run(js_code)
 	elseif not (self.sessionId == previousId) then 
-		block_game(self)
+		
+		popup_lock_game(self)
 
 		if self.timer then
 			timer.cancel(self.timer)
@@ -49,45 +50,139 @@ local function pages_checking(self)
 end
 
 local function prepare_local_storage(self)
-	local js_code = [[
+	-- Генерируем уникальное начальное значение
+	self.sessionId = generateUniqueValue()
+	
+	local set_session = string.format([[
+		localStorage.setItem('sessionId', '%s');
+	
 		window.addEventListener('beforeunload', function() {
 			localStorage.removeItem('sessionId');
 		});
-	]]
+	]], self.sessionId)
 	
-	html5.run(js_code)
-
-	-- Генерируем уникальное начальное значение
-	self.sessionId = generateUniqueValue()
+	html5.run(set_session)
+	
 	-- Устанавливаем таймер для постоянной проверки каждые 1000 миллисекунд
-	self.timer = timer.delay(1, true, pages_checking)
+	self.timer = timer.delay(1, true, localstorage_checking)
 end
 
-function init(self)
-	-- Эта функция вызывается при запуске скрипта
-	print("Игра запущена")
+local function get_data_from_local_storage(self)
+	local get_params = "localStorage.getItem('params')"
+	local params = html5.run(get_params)
 
-	if not (html5 == nil) then 
-
-		prepare_local_storage(self)
+	if (params == "null") or (params == "[object Object]") then 
+		self.params = {words = {}, level = 1}
+		local string_data = json.encode(self.params)
+		local send_params = string.format("localStorage.setItem('params', '%s')", string_data)
+		html5.run(send_params)
+	else 
+		self.params = json.decode(params)
+		print("FROM LOCAL PARAMS: ", self.params)
 	end
 end
 
 
-local function unlock_game(self)
+
+function init(self)
+	print("Игра запущена")
+	
+	sound.play("sounds#sea")
+
+	msg.post("#game_proxy", "load")
+	msg.post(".", "acquire_input_focus")
+end
+
+
+local function unlock_game_by_popup(self)
+	self.game_is_locked_by_popup = false
+	
 	print("Разблокировка игры")
 
 	local js_code = string.format("localStorage.setItem('sessionId', '%s');", self.sessionId)
 	html5.run(js_code)
-	
-	-- Устанавливаем таймер для постоянной проверки каждые 1000 миллисекунд
-	self.timer = timer.delay(1, true, pages_checking)
+
+	if not self.proxy_loaded 
+	and not self.game_is_locked_by_popup 
+	and not self.game_is_locked_by_level then
+		msg.post("#game_proxy", "load")
+	end
+
+	if self.timer then
+		timer.cancel(self.timer)
+		self.timer = timer.delay(1, true, localstorage_checking)
+	end
 end
 
+local function unlock_game_by_level(self)
+	self.game_is_locked_by_level = false
 
-function on_message(self, message_id, message, sender)
-	if message_id == hash("unlock_game") then 
-		unlock_game(self)
+	print("Разблокировка игры")
+
+	local js_code = string.format("localStorage.setItem('sessionId', '%s');", self.sessionId)
+	html5.run(js_code)
+
+	if not self.proxy_loaded
+	and not self.game_is_locked_by_popup 
+	and not self.game_is_locked_by_level then
+		msg.post("#game_proxy", "load")
+	end
+
+	if self.timer then
+		timer.cancel(self.timer)
+		self.timer = timer.delay(1, true, localstorage_checking)
+	end
+end
+
+function on_message(self, message_id, message, sender)	
+	if message_id == hash("proxy_loaded") then
+		self.proxy_loaded = true
+		
+		if not (html5 == nil) then 
+			prepare_local_storage(self)
+			get_data_from_local_storage(self)
+		else 
+			print("error: html5 is nil")
+		end
+
+		-- Включаем GUI коллекцию
+		msg.post(sender, "enable")
+		msg.post("game:/game_ui", "acquire_input_focus")
+		msg.post("game:/game_ui", "set_game_params", self.params)
+	elseif message_id == hash("proxy_unloaded") then
+		print("proxy_unloaded")
+		self.proxy_loaded = false
+	elseif message_id == hash("next_level") then
+		next_level_lock_game(self)
+	end
+	
+	if message_id == hash("unlock_game") then
+		if message.from == "level" then unlock_game_by_level(self) end
+		if message.from == "popup" then unlock_game_by_popup(self) end
+	end
+
+	if message_id == hash("guessed_word") then 
+		print("SEND WORD", message.word)
+		table.insert(self.params.words, message.word)
+		local string_data = json.encode(self.params)
+		local send_params = string.format("localStorage.setItem('params', '%s')", string_data)
+		html5.run(send_params)
+
+		msg.post("game:/game_ui", "update_game_params", self.params)
+	end
+
+	if message_id == hash("next_level") then 
+		print("SEND WORD", message.word)
+		self.params = message
+		local string_data = json.encode(self.params)
+		local send_params = string.format("localStorage.setItem('params', '%s')", string_data)
+		html5.run(send_params)
+	end
+end
+
+function on_input(self, action_id, action)
+	if not self.game_is_locked_by_level and not self.game_is_locked_by_popup then
+		msg.post("game:/game_ui", "input", { action_id = action_id, action = action })
 	end
 end
 

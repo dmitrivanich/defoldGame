@@ -6,7 +6,6 @@ local popup
 local background
 
 local function show()
-	
 	gui.animate(popup, "position.y", 360, gui.EASING_OUTBACK, 0.4, 0)
 	gui.animate(popup, "color.w", 1, gui.EASING_LINEAR, 0.3, 0.1)
 	
@@ -15,15 +14,6 @@ local function show()
 	end)
 end
 
-local function hide() 
-	gui.animate(popup, "position.y", 500, gui.EASING_INBACK, 0.4, 0)
-	gui.animate(popup, "color.w", 0, gui.EASING_LINEAR, 0.3, 0.1)
-
-	gui.animate(background, "color.w", 0, gui.EASING_LINEAR, 0.3, 0.2,  function() 
-		pupup_is_showed = false
-		button_clicked = false
-	end)
-end
 
 local function button_to_hint(button)
 	-- Анимация перемещения вправо на 50
@@ -38,14 +28,20 @@ end
 
 local function button_click(button)
 	button_clicked = true;
-	
-	local function back(self, node) 
-		gui.animate(node, "scale", 1, gui.EASING_INSINE, 0.2, 0, hide)
-	end
-
-	gui.animate(button, "scale", 0.9, gui.EASING_OUTEXPO, 0.1, 0, back)
 	sound.play("sounds#tap")
-	msg.post("main", "unlock_game")
+
+	gui.animate(button, "scale", 0.9, gui.EASING_OUTEXPO, 0.1, 0, function () 
+		gui.animate(button, "scale", 1, gui.EASING_INSINE, 0.1, 0)
+	end)
+
+	gui.animate(popup, "color.w", 0, gui.EASING_LINEAR, 0.1)
+
+	gui.animate(background, "color.w", 0, gui.EASING_LINEAR, 0.1, 0.1, function() 
+		pupup_is_showed = false
+		button_clicked = false
+	end)
+	
+	msg.post("main", "unlock_game", {from = "popup"})
 end	
 
 
@@ -61,6 +57,8 @@ function init(self)
 	background = gui.get_node("popup_background")
 	
 	msg.post(".", "acquire_input_focus")
+
+	-- gui.set_render_order(self, 1)
 end
 
 

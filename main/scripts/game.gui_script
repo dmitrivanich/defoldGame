@@ -1,11 +1,21 @@
 local utf8 = require "main.modules.utf8" --модуль для работы с русскими символами
 local node = require "main.modules.node" --модуль для создания node элементов
+local anim = require "main.modules.animations" --модуль для анимаций
+local mmath = require("main.modules.math") --модуль для мат. расчётов
 
-local function getMinimumUniqueLetters(words)
+local words -- слова, которые нужно отгадать
+local resultLetters = {} --буквы для кольца
+local ring_cells --узлы ячеек на кольце из букв
+
+local selected_cells = {} -- выбранные буквы и их порядковый номер
+local letter_counter = 0 -- кол-во введённых букв
+
+local function getMinimumUniqueLetters()
 	local maxLetterCounts = {}
 
 	-- Проходим по каждому слову в массиве
 	for _, word in ipairs(words) do
+		
 		local letterCounts = {}
 		local text_length = utf8.len(word)
 		
@@ -26,8 +36,6 @@ local function getMinimumUniqueLetters(words)
 		end
 	end
 
-	local resultLetters = {}
-
 	-- Формируем результирующий массив
 	for letter, count in pairs(maxLetterCounts) do
 		for i = 1, count do
@@ -38,10 +46,9 @@ local function getMinimumUniqueLetters(words)
 	return resultLetters
 end
 
-
-local function generate_ui(data) 
-	local words_number = #data
-	local size = 250 / words_number
+local function generate_ui() 
+	local words_number = #words
+	local size = mmath.calculate_size(50, words_number)
 	local start_x = size / 2
 	local start_y = (size * words_number / 2) - size
 	
@@ -51,7 +58,7 @@ local function generate_ui(data)
 	local spacing_x = size + 4
 	local spacing_y = size + 4
 	
-	for index, word in ipairs(data) do
+	for index, word in ipairs(words) do
 		local text_length = utf8.len(word)
 		
 		x = -((spacing_x + size) * text_length / 2) / 2 + start_x
@@ -59,7 +66,7 @@ local function generate_ui(data)
 		for i = 1, text_length do
 			local char = utf8.sub(word, i, 1)
 			
-			node.create_cell(char, word, size, x, y)
+			node.create_cell(i, char, word, size, x, y)
 			
 			x = x + spacing_x
 		end
@@ -67,60 +74,218 @@ local function generate_ui(data)
 		y = y - spacing_y
 	end
 
-	local uniqueLetters = getMinimumUniqueLetters(data)
-	node.create_ring_cells(uniqueLetters)
+	local uniqueLetters = getMinimumUniqueLetters()
+	ring_cells = node.create_ring_cells(uniqueLetters)
+	
 end
 
 local function readLevelFile(self)
 	local level_number = ((self.level - 1) % 3) + 1
 	-- Load level data into a string
 	local data, error = sys.load_resource("/main/levels/" .. level_number .. ".json")
+	-- local data, error = sys.load_resource("/main/levels/test.json")
 	-- Decode json string to a Lua table
 	if data then
 		local data_table = json.decode(data)
-		generate_ui(data_table.words)
+		words = data_table.words
+		generate_ui()
 	else
 		print(error)
 	end
 end
 
-function init(self)
-	self.level = 3
+local function check_cursor_collision(x, y)
+	if not ring_cells then return false end -- if cells isn't created - exit
+
+	local click_on_button = false
+	
+	for i = 1, #ring_cells do
+		local cell = ring_cells[i]
+
+		if cell and gui.pick_node(cell, x, y) then
+			click_on_button = true 
+			
+			local cell_id = gui.get_id(cell)
+
+			local cell_text = gui.get_node(cell_id .. "_text")
+			local text = gui.get_text(cell_text)
+			
+			if not selected_cells[cell_id] then
+				letter_counter = letter_counter + 1
+				
+				anim.cell_ring_selection(cell_id)
+				node.create_interim_letter(text, letter_counter)
+				selected_cells[cell_id] = {text = text, number = letter_counter}
+				-- print("Записана буква: " .. text) 
+			end
+		end
+	end
+
+	return click_on_button
+end
+
+local function clear_letter_input() 
+	selected_cells = {}
+	letter_counter = 0
+end
+
+local function contains(array, value)
+	for _, v in ipairs(array) do
+		if v == value then
+			return true
+		end
+	end
+	return false
+end
+
+local function open_correct_word(word)
+	local id
+	local text_length = utf8.len(word)
+
+	-- Считаем количество каждой буквы в текущем слове
+	for i = 1, text_length do
+		local letter = utf8.sub(word, i, 1)
+
+		id = word .. "_" .. i .. "_" .. letter
+
+		local cell = gui.get_node(id)
+		local cell_white = gui.get_node(id .. "_white")
+
+		--анимация открытия
+		gui.animate(cell, "scale.x", 1.1, gui.EASING_LINEAR, 0.1, 0, 
+		function () gui.animate(cell, "scale.x", 1, gui.EASING_LINEAR, 0.1) end
+			)
+
+			gui.animate(cell, "scale.y", 1.1, gui.EASING_LINEAR, 0.1, 0, 
+			function () gui.animate(cell, "scale.y", 1, gui.EASING_LINEAR, 0.1) end
+		)
+
+		--открываем букву
+		gui.animate(cell_white, "color.w", 0, gui.EASING_LINEAR, 0.2)
+	end
+end
+
+local function check_word(self, word, letters)
+	local finded = contains(words, word)
+	local unic = true
+
+	for _, guessed_word in ipairs(self.guessed_words) do
+		if word == guessed_word then unic = false end
+		print(word, guessed_word)
+	end
+	
+	if finded and unic then
+		open_correct_word(word)
+		print("Угадано слово", word)
+		
+		msg.post("main:/main", "guessed_word", {word = word})
+		sound.play("main:/sounds#correct")
+		sound.play("main:/sounds#success")
+	else 
+		sound.play("main:/sounds#error")
+	end
+end
+
+local function check_selected_letters(self)
+	local word_table = {}
+	local word = ""
+	
+	-- сортировка всех введённых букв по порядку ввода
+	for index, cell in pairs(selected_cells) do
+		word_table[cell.number] = cell.text
+	end
+
+	-- склейка слова из букв
+	for index, letter in pairs(word_table) do
+		word = word .. utf8.lower(letter)
+	end
+
+	check_word(self, word, selected_cells)
+end
+
+local function set_game_params(self, params) 
+	self.game_state = "gameplay"
+	self.level = params.level
+	self.guessed_words = params.words
+	gui.set_text(gui.get_node("level_name"), "Уровень " .. self.level)
+
 	readLevelFile(self)
+
+	for index, word in ipairs(self.guessed_words) do
+		open_correct_word(word)
+	end
 end
 
-function final(self)
-	-- Add finalization code here
-	-- Learn more: https://defold.com/manuals/script/
-	-- Remove this function if not needed
-end
-
-function update(self, dt)
-	-- Add update code here
-	-- Learn more: https://defold.com/manuals/script/
-	-- Remove this function if not needed
+local function animate_show(d)
+	local overlay = gui.get_node("overlay")
+	gui.animate(overlay, "color.w", 0, gui.EASING_LINEAR, 0.5, d)
 end
 
 function on_message(self, message_id, message, sender)
-	-- Add message-handling code here
-	-- Learn more: https://defold.com/manuals/message-passing/
-	-- Remove this function if not needed
+	if message_id == hash("set_game_params") then 
+		timer.delay(0.1, false, function () 
+			set_game_params(self, message)
+			animate_show(0)
+		end)
+	end
+
+	if message_id == hash("update_game_params") then 
+		self.level = message.level
+		self.guessed_words = message.words
+
+		for index, word in ipairs(self.guessed_words) do
+			open_correct_word(word)
+		end
+
+		if (#self.guessed_words == #words) then
+			timer.delay(0.7, false, function ()
+				msg.post("main:/main", "next_level", {words = {}, level = self.level + 1})
+				sound.play("main:/sounds#level_up")
+			end)
+			
+			words = {}
+			resultLetters = {}
+			ring_cells = {}
+		end	
+	end
+
+	if message_id == hash("input") then
+		if not (self.game_state == "gameplay") then return end
+		
+		local action_id = message.action_id
+		local action = message.action
+
+		if action_id == hash("touch") then
+			if action.pressed then
+				self.is_mouse_pressed = true
+				print("cursor down")
+				check_cursor_collision(action.x, action.y)
+			elseif action.released then
+				self.is_mouse_pressed = false
+				print("cursor up")
+				
+				check_selected_letters(self)
+
+				for id, letter in pairs(selected_cells) do
+					anim.cell_ring_unselection(id)
+				end
+
+				node.remove_interim_letters()
+				clear_letter_input()
+			end
+
+			if self.is_mouse_pressed then
+				check_cursor_collision(action.x, action.y)
+			end
+		end
+	end
 end
 
-function on_input(self, action_id, action)
-	-- Add input-handling code here. The game object this script is attached to
-	-- must have acquired input focus:
-	--
-	--    msg.post(".", "acquire_input_focus")
-	--
-	-- All mapped input bindings will be received. Mouse and touch input will
-	-- be received regardless of where on the screen it happened.
-	-- Learn more: https://defold.com/manuals/input/
-	-- Remove this function if not needed
+function init(self)
+	self.is_mouse_pressed = false
+	self.game_state = "start"
+	self.node_for_line = gui.get_node("letters_ring")
 end
 
-function on_reload(self)
-	-- Add reload-handling code here
-	-- Learn more: https://defold.com/manuals/hot-reload/
-	-- Remove this function if not needed
-end
+
+

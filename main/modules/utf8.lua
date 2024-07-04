@@ -1,4 +1,5 @@
--- utf8.lua
+-- Модуль для работы с русскими символами
+
 local utf8 = {}
 
 local function utf8charbytes(str, i)
@@ -70,9 +71,12 @@ end
 function utf8.upper(str)
 	local result = ""
 	local length = utf8.len(str)
-	for i = 1, length do
+	local i = 1
+	while i <= length do
 		local char = utf8.sub(str, i, i)
-		result = result .. (lower_to_upper[char] or char:upper())
+		local upper_char = lower_to_upper[char] or char:upper()
+		result = result .. upper_char
+		i = i + 1
 	end
 	return result
 end
@@ -81,9 +85,12 @@ end
 function utf8.lower(str)
 	local result = ""
 	local length = utf8.len(str)
-	for i = 1, length do
+	local i = 1
+	while i <= length do
 		local char = utf8.sub(str, i, i)
-		result = result .. (upper_to_lower[char] or char:lower())
+		local lower_char = upper_to_lower[char] or char:lower()
+		result = result .. lower_char
+		i = i + 1
 	end
 	return result
 end

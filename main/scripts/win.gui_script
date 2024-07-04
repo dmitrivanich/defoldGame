@@ -1,0 +1,58 @@
+local anim = require "main.modules.animations" --модуль для анимаций
+
+local button_clicked = false
+
+local function set_level_params(current_level)
+	local level_number = gui.get_node("win_level_number")
+	local button_text = gui.get_node("win_button_text")
+	
+	gui.set_text(level_number, string.format("Уровень %i пройден", current_level))
+	gui.set_text(button_text, string.format("Уровень %i", current_level + 1))
+end
+
+function on_message(self, message_id, message, sender)
+	if (message_id == hash("show_win")) then
+		button_clicked = false
+		
+		anim.animate_show("win_screen", 0.5)
+		anim.animate_show("win_quality_text", 0.5)
+		anim.animate_show("win_level_number", 0.5)
+		anim.animate_show("win_button", 0.5)
+		anim.animate_show("win_button_text", 0.5)
+		if message.current_level then set_level_params(message.current_level) end
+	elseif (message_id == hash("hide_win")) then
+		local win_screen = gui.get_node("win_screen")
+		gui.animate(win_screen, "color.w", 0, gui.EASING_OUTEXPO, 0.5, 0)
+	end
+end
+
+local function button_click(self, button)
+	button_clicked = true;
+	sound.play("sounds#tap")
+	
+	gui.animate(button, "scale", 0.9, gui.EASING_OUTEXPO, 0.1, 0, function () 
+		gui.animate(button, "scale", 1, gui.EASING_INSINE, 0.2, 0)
+	end)
+
+	anim.animate_hide("win_screen", 0.5)
+	anim.animate_hide("win_quality_text", 0.5)
+	anim.animate_hide("win_level_number", 0.5)
+	anim.animate_hide("win_button", 0.5)
+	anim.animate_hide("win_button_text", 0.5)
+
+	msg.post("main", "unlock_game", {from = "level"})
+end	
+
+function on_input(self, action_id, action)
+	if action_id == hash("touch") and action.pressed then
+		local button = gui.get_node("win_button")
+
+		if gui.pick_node(button, action.x, action.y) then
+			if not button_clicked then button_click(self, button) end
+		end
+	end
+end
+
+function init(self)
+	msg.post(".", "acquire_input_focus")
+end
